@@ -137,7 +137,7 @@ namespace cyh::os {
 	void Win32Debug::ErrorExit(const char* error_item_name) {
 		// Retrieve the system error message for the last-error code
 
-		LPVOID lpMsgBuf;
+		LPVOID lpMsgBuf{};
 		LPVOID lpDisplayBuf;
 		DWORD dw = GetLastError();
 
@@ -155,6 +155,9 @@ namespace cyh::os {
 
 		lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
 			(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)error_item_name) + 40) * sizeof(TCHAR));
+		if (!lpDisplayBuf) {
+			std::cerr << "failed on allocating message buffer" << std::endl;
+		}
 		StringCchPrintf((LPTSTR)lpDisplayBuf,
 			LocalSize(lpDisplayBuf) / sizeof(TCHAR),
 			TEXT("%s failed with error %d: %s"),
