@@ -17,6 +17,7 @@ list(APPEND CYHCORE_SRCS
     "cyh/os/common_internal.cpp"
     "cyh/os/proc_mon.cpp"
     "cyh/os/res_mon.cpp"
+    "cyh/os/shmem_mgr.cpp"
 )
 
 add_library(cyhos SHARED ${CYHCORE_SRCS})

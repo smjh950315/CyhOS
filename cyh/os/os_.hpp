@@ -4,7 +4,11 @@
 #include <type_traits>
 #if defined(_WIN32) || defined(_WIN64)
 #define __WINDOWS_PLATFORM__
+#else
 #endif
+
+#define UNSUPPORT_UNIX
+
 namespace cyh::os {
 	using uint = unsigned int;
 	using nint = std::make_signed_t<size_t>;

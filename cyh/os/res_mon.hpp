@@ -4,7 +4,6 @@ namespace cyh::os {
 	class ResourceMonitor {
 	public:
 		static double GetCpuClock();
-
 		static long GetProcessorCount();
 		static double GetProcessorUsage(uint cpu_no);
 		static std::vector<double> GetAllProcessorUsage();

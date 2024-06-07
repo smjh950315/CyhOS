@@ -30,6 +30,9 @@
     <ClInclude Include="cyh\os\res_mon.hpp">
       <Filter>標頭檔</Filter>
     </ClInclude>
+    <ClInclude Include="cyh\os\shmem_mgr.hpp">
+      <Filter>標頭檔</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cyh\os\common_internal.cpp">
@@ -39,6 +42,9 @@
       <Filter>來源檔案</Filter>
     </ClCompile>
     <ClCompile Include="cyh\os\res_mon.cpp">
+      <Filter>來源檔案</Filter>
+    </ClCompile>
+    <ClCompile Include="cyh\os\shmem_mgr.cpp">
       <Filter>來源檔案</Filter>
     </ClCompile>
   </ItemGroup>

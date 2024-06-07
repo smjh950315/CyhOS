@@ -8,9 +8,12 @@
 #include <thread>
 #include <future>
 #else
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <sys/mman.h>
+#include <unistd.h>
 #endif
 namespace cyh::os {
 #ifdef __WINDOWS_PLATFORM__

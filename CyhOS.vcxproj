@@ -24,9 +24,11 @@
     <ClInclude Include="cyh\os\os_.hpp" />
     <ClInclude Include="cyh\os\proc_mon.hpp" />
     <ClInclude Include="cyh\os\res_mon.hpp" />
+    <ClInclude Include="cyh\os\shmem_mgr.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cyh\os\common_internal.cpp" />
+    <ClCompile Include="cyh\os\shmem_mgr.cpp" />
     <ClCompile Include="cyh\os\proc_mon.cpp" />
     <ClCompile Include="cyh\os\res_mon.cpp" />
   </ItemGroup>

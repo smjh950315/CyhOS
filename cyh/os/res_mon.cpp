@@ -2,9 +2,6 @@
 #include "common_internal.hpp"
 #include <cstring>
 #include <string>
-#ifndef __WINDOWS_PLATFORM__
-#include <unistd.h>
-#endif
 namespace cyh::os {
 #ifndef __WINDOWS_PLATFORM__
 	static float read_cpu_usage(const std::string& rawStr) {
