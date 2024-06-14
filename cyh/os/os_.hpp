@@ -33,4 +33,13 @@ namespace cyh::os {
 		uint pid{};
 		std::string name;
 	};
+	struct DiskAbstract {
+		std::string physical{};
+		std::string mount{};
+	};
+	struct DiskInfo {
+		uint physical_no{};
+		double idle_time{};
+		std::string mount{};
+	};
 };

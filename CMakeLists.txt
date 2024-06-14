@@ -3,6 +3,7 @@ project(cyhos)
 
 set(GCC_COVERAGE_COMPILE_FLAGS "-fpermissive")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 
 # add include dir
 include_directories(
@@ -10,7 +11,8 @@ include_directories(
 )
 
 set(CMAKE_SHARED_LINKER_FLAGS
-    "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath -Wl,$ORIGIN -Wl,-fPIC")
+    "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath -Wl,$ORIGIN -Wl,-fPIC"
+)
 
 # add cpp files
 list(APPEND CYHCORE_SRCS
