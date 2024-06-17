@@ -3,6 +3,7 @@
 namespace cyh::os {
 	class ResourceMonitor {
 	public:
+		// Get clock Hz of Processor ( Unfinished )
 		static double GetCpuClock();
 		static long GetProcessorCount();
 		static double GetProcessorUsage(uint cpu_no);
@@ -13,7 +14,7 @@ namespace cyh::os {
 		// get disk no such as C:,D:...
 		static std::vector<std::string> GetLogicDiskNos();
 		static std::vector<double> GetAllProcessorUsage();
-		static std::vector<double> GetAllLogicDiskUsage();
+		static std::vector<LogicDiskInformation> GetAllLogicDiskInfo();
 		static MemoryStatus GetMemoryStatus();
 	};
 };

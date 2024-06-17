@@ -1,4 +1,7 @@
-#include "common_internal.hpp"
+#include "os_internal.hpp"
+namespace cyh::os {
+	uint GlobalVariables::ProbingTime = 1000u;
+};
 #ifdef __WINDOWS_PLATFORM__
 #include <strsafe.h>
 // WinPerfmonQuery
@@ -154,14 +157,14 @@ namespace cyh::os {
 		// Display the error message and exit the process
 
 		lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
-			(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)error_item_name) + 40) * sizeof(TCHAR));
+										  (lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)error_item_name) + 40) * sizeof(TCHAR));
 		if (!lpDisplayBuf) {
 			std::cerr << "failed on allocating message buffer" << std::endl;
 		}
 		StringCchPrintf((LPTSTR)lpDisplayBuf,
-			LocalSize(lpDisplayBuf) / sizeof(TCHAR),
-			TEXT("%s failed with error %d: %s"),
-			error_item_name, dw, lpMsgBuf);
+						LocalSize(lpDisplayBuf) / sizeof(TCHAR),
+						TEXT("%s failed with error %d: %s"),
+						error_item_name, dw, lpMsgBuf);
 		MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK);
 
 		LocalFree(lpMsgBuf);
@@ -171,7 +174,9 @@ namespace cyh::os {
 };
 #else
 #include "res_mon.hpp"
+#include "proc_mon.hpp"
 namespace cyh::os {
+
 	void UnixInfoParser::read_unix_disk_info(_unixDiskInfo* pInfo, const std::string& rawStr) {
 		if (!pInfo) { return; }
 		_unixDiskInfo& diskUsage = *pInfo;
@@ -184,6 +189,16 @@ namespace cyh::os {
 		std::istringstream ss(rawStr);
 		std::string _cpu;
 		ss >> _cpu >> cpuUsage.user >> cpuUsage.nice >> cpuUsage.system >> cpuUsage.idle >> cpuUsage.iowait >> cpuUsage.irq >> cpuUsage.softirq >> cpuUsage.steal;
+	}
+	void UnixInfoParser::read_unix_proc_info(_unixProcStat* pInfo, const std::string& rawStr) {
+		if (!pInfo) { return; }
+		_unixProcStat& info = *pInfo;
+		std::istringstream ss(rawStr);
+		std::string _proc;
+		ss >> info.pid >> _proc >> _proc >> info.ppid >> info.pgid
+			>> info.sid >> info.tty_nr >> info.tty_pgrp >> info.flags >> info.min_flt
+			>> info.cmin_flt >> info.maj_flt >> info.cmaj_flt >> info.utime >> info.stime
+			>> info.cutime >> info.cstime;
 	}
 
 	_unixDiskInfo UnixInfoParser::read_disk_info(const std::string& disk_label) {
@@ -201,7 +216,7 @@ namespace cyh::os {
 		}
 		return result;
 	}
-	std::vector<_unixDiskInfo> UnixInfoParser::read_disk_infos() {
+	std::vector<_unixDiskInfo> UnixInfoParser::read_disks_info() {
 		std::vector<_unixDiskInfo> result{};
 
 		std::ifstream diskstats("/proc/diskstats");
@@ -222,6 +237,22 @@ namespace cyh::os {
 		return static_cast<double>(delta_total_time - delta_idle_time) / static_cast<double>(delta_total_time) * 100.0;
 	}
 
+	_unixCpuInfo UnixInfoParser::read_total_cpu_info() {
+		_unixCpuInfo info{};
+		std::ifstream file("/proc/stat");
+		std::string line;
+		if (file.is_open()) {
+			while (std::getline(file, line)) {
+				if (line.find("cpu ") == 0) {
+					read_unix_cpu_info(&info, line);
+				} else {
+					break;
+				}
+			}
+			file.close();
+		}
+		return info;
+	}
 	_unixCpuInfo UnixInfoParser::read_cpu_info(uint cpu_no) {
 		auto cpu_count = ResourceMonitor::GetProcessorCount();
 
@@ -283,28 +314,56 @@ namespace cyh::os {
 		long delta_idle_time = pInfo2->idle_time() - pInfo1->idle_time();
 		return static_cast<double>(delta_total_time - delta_idle_time) / static_cast<double>(delta_total_time) * 100.0;
 	}
+
+
+	_unixProcStat UnixInfoParser::read_proc_stat(uint pid) {
+		_unixProcStat procInfo{};
+		std::string basePath = "/proc/";
+		basePath += std::to_string(pid);
+		std::ifstream stat_file(basePath + "/stat");
+		std::string line;
+		if (stat_file.is_open()) {
+			std::getline(stat_file, line);
+			read_unix_proc_info(&procInfo, line);
+			stat_file.close();
+		}
+		return procInfo;
+	}
+	std::vector<_unixProcStat> UnixInfoParser::read_procs_stat() {
+		std::vector<_unixProcStat> result;
+		auto pids = ProcessMonitor::GetProcessIDs();
+		for (auto& pid : pids) {
+			result.push_back(read_proc_stat(pid));
+		}
+		return result;
+	}
+	double UnixInfoParser::calculate_proc_cpu_usage(_unixProcStat* pInfo1, _unixProcStat* pInfo2, _unixCpuInfo* pCInfo1, _unixCpuInfo* pCInfo2) {
+		if (!pInfo1 || !pInfo2 || !pCInfo1 || !pCInfo2) { return 0.0; }
+		long total_cpu_delta = pCInfo1->total_time() - pCInfo2->total_time();
+		long total_proc_delta = pInfo1->total_cpu_time() - pInfo1->total_cpu_time();
+		return static_cast<double>(total_proc_delta) / static_cast<double>(total_cpu_delta);
+	}
 };
 #endif
 namespace cyh::os {
 	double UnitConvert::GetRatioToByte(const std::string unit) {
 		double result{ 1.0 };
-		static auto callback_getRatio = [](char unitChar) {
-			switch (unitChar)
-			{
-			case 'K': case'k':
-				return 1024.0;
-			case 'M': case 'm':
-				return 1048576.0;
-			case 'G': case 'g':
-				return 1073741824.0;
-			case 'T': case 't':
-				return 1099511627776.0;
-			case 'P': case 'p':
-				return 1099511627776.0 * 1024.0;
-			default:
-				return 1.0;
+		static auto callback_getRatio = [] (char unitChar) {
+			switch (unitChar) {
+				case 'K': case'k':
+					return 1024.0;
+				case 'M': case 'm':
+					return 1048576.0;
+				case 'G': case 'g':
+					return 1073741824.0;
+				case 'T': case 't':
+					return 1099511627776.0;
+				case 'P': case 'p':
+					return 1099511627776.0 * 1024.0;
+				default:
+					return 1.0;
 			}
-			};
+		};
 		for (const auto& ch : unit) {
 			result *= callback_getRatio(ch);
 		}

@@ -29,26 +29,15 @@ namespace cyh::os {
 		nuint user_time{};
 		double cpu_time_percentage{};
 	};
-	struct ProcessDetails {
-		uint pid{};
+	struct LogicDiskInformation {
+		std::string mount_or_label;
+		double io_time_percentage{};
+	};
+	struct ProcessGroup {
 		std::string name;
 		std::string path;
-		nuint memory{};
-		nuint kernal_time{};
-		nuint user_time{};
 		double cpu_time_percentage{};
-	};
-	struct ProcessAbstract {
-		uint pid{};
-		std::string name;
-	};
-	struct DiskAbstract {
-		std::string physical{};
-		std::string mount{};
-	};
-	struct DiskInfo {
-		uint physical_no{};
-		double idle_time{};
-		std::string mount{};
+		nuint memory{};
+		std::vector<ProcessInformation> sub_procs;
 	};
 };

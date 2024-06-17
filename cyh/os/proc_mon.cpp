@@ -1,6 +1,7 @@
 #include "proc_mon.hpp"
 #include "res_mon.hpp"
-#include "common_internal.hpp"
+#include "os_internal.hpp"
+#include <map>
 #ifdef __WINDOWS_PLATFORM__
 #include <tlhelp32.h>
 #include <Psapi.h>
@@ -16,7 +17,7 @@ namespace cyh::os {
 		CloseHandle(hndl);
 #endif
 	}
-	static void close_no_handle(void*) { }
+	static void close_no_handle(void*) {}
 	static bool is_valid_process(ProcessInformation* pInfo) {
 		if (!pInfo) { return false; }
 		return pInfo->pid != ~uint();
@@ -101,27 +102,14 @@ namespace cyh::os {
 			}
 		}
 		{
-			std::ifstream stat_file(basePath + "/stat");
-			if (stat_file.is_open()) {
-				std::string stat_line;
-				std::getline(stat_file, stat_line);
-				std::istringstream iss(stat_line);
-				std::vector<std::string> stat_values;
-				std::string value;
-				while (iss >> value) {
-					stat_values.push_back(value);
-				}
-				if (stat_values.size() > 21) {
-					pinfo->user_time = std::stol(stat_values[13]);
-					pinfo->kernal_time = std::stol(stat_values[14]);
-				}
-				stat_file.close();
-			}
+			_unixProcStat stat = UnixInfoParser::read_proc_stat(pinfo->pid);
+			pinfo->user_time = stat.utime + stat.cutime;
+			pinfo->kernal_time = stat.stime + stat.cstime;
 		}
 #endif
 	}
 #ifdef __WINDOWS_PLATFORM__
-	static double get_win_process_cpuTime(ProcessInformation* pInfo) {
+	static double get_win_process_cpuPercentage(ProcessInformation* pInfo) {
 		if (!pInfo) { return 0.0; }
 		if (!is_valid_process(pInfo)) { return 0.0; }
 
@@ -140,10 +128,20 @@ namespace cyh::os {
 		double result{};
 		return WinPerfmonQuery::QueryForDoubleResult(query, &result, 1000u) ? result : 0.0;
 	}
+#else
+	static double get_unix_delta_cpuTime() {
+		auto cpu0 = UnixInfoParser::read_total_cpu_info();
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000u));
+		auto cpu1 = UnixInfoParser::read_total_cpu_info();
+		return static_cast<double>(cpu0.total_time() - cpu1.total_time());
+	}
 #endif
+	// On windows, get cpu usage of process id directly
+	// On unix, get proc cpu delta time instead
 	static void measure_process_cputime(uint pid, double* pCpuTime) {
 		if (pid == ~uint() || !pCpuTime) { return; }
 		*pCpuTime = 0.0;
+#ifdef __WINDOWS_PLATFORM__
 		static auto callbackGetProcDetail = [] (ProcessInformation* presult, uint _pid) {
 			void* handle{};
 			std::string unixPath;
@@ -156,27 +154,40 @@ namespace cyh::os {
 		};
 		ProcessInformation result0 = { ~uint{}, "<unknown>", "<unknown>", 0, 0, 0, 0.0 };
 		callbackGetProcDetail(&result0, pid);
-#ifdef __WINDOWS_PLATFORM__
-		* pCpuTime = get_win_process_cpuTime(&result0);
+		*pCpuTime = get_win_process_cpuPercentage(&result0);
 #else
-		if (is_valid_process(&result0)) {
-			ProcessInformation result1 = { ~uint{}, "<unknown>", "<unknown>", 0, 0, 0, 0.0 };
-			callbackGetProcDetail(&result1, pid);
-			std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-			auto delta_time = (result1.kernal_time + result1.user_time) - (result0.kernal_time + result0.user_time);
-			*pCpuTime = static_cast<double>(delta_time) / ResourceMonitor::GetCpuClock();;
-		}
+		auto info0 = UnixInfoParser::read_proc_stat(pid);
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000u));
+		auto info1 = UnixInfoParser::read_proc_stat(pid);
+		*pCpuTime = static_cast<double>(info0.total_cpu_time() - info1.total_cpu_time());
 #endif
 	}
 	static void measure_process_cpuTime_batch(uint* ppid, double* pCpuTimes, nuint count) {
+
 		std::vector<std::future<void>> tasks;
 		tasks.reserve(count);
+#ifndef __WINDOWS_PLATFORM__
+		std::future<double> taskDeltaCpuTime = std::async(std::launch::async, get_unix_delta_cpuTime);
+#endif
 		for (nuint i = 0; i < count; ++i) {
 			tasks.push_back(std::async(std::launch::async, measure_process_cputime, ppid[i], pCpuTimes + i));
 		}
 		for (auto& task : tasks) {
 			task.get();
 		}
+#ifndef __WINDOWS_PLATFORM__
+		// for unix measure_process_cputime() will get proc cpu delta time instead
+		auto cpuDeltaTime = taskDeltaCpuTime.get();
+		if (cpuDeltaTime == 0.0) {
+			for (nuint i = 0; i < count; ++i) {
+				pCpuTimes[i] = 0.0;
+			}
+		} else {
+			for (nuint i = 0; i < count; ++i) {
+				pCpuTimes[i] /= cpuDeltaTime;
+			}
+		}
+#endif
 	}
 
 	std::vector<uint> ProcessMonitor::GetProcessIDs() {
@@ -217,7 +228,7 @@ namespace cyh::os {
 	}
 	std::vector<uint> ProcessMonitor::GetProcessIDs(const char* name) {
 		std::vector<uint> result;
-		auto procs = GetProcessInfos(false);
+		auto procs = GetAllProcessInfo(false);
 		for (auto& proc : procs) {
 			if (proc.name == name) {
 				result.push_back(proc.pid);
@@ -239,7 +250,7 @@ namespace cyh::os {
 		}
 		return result;
 	}
-	std::vector<ProcessInformation> ProcessMonitor::GetProcessInfos(bool with_details) {
+	std::vector<ProcessInformation> ProcessMonitor::GetAllProcessInfo(bool with_details) {
 		std::vector<ProcessInformation> result;
 		auto pids = GetProcessIDs();
 		auto count = pids.size();
@@ -264,7 +275,18 @@ namespace cyh::os {
 	}
 	double ProcessMonitor::GetProcessCpuTime(uint pid) {
 		double result{};
+#ifndef __WINDOWS_PLATFORM__
+		std::future<double> taskGetDeltaCpu = std::async(std::launch::async, get_unix_delta_cpuTime);
+#endif
 		measure_process_cputime(pid, &result);
+#ifndef __WINDOWS_PLATFORM__
+		auto deltaCpu = taskGetDeltaCpu.get();
+		if (deltaCpu == 0.0) {
+			result = 0;
+		} else {
+			result /= deltaCpu;
+		}
+#endif
 		return result;
 	}
 	bool ProcessMonitor::ForceKillProcess(uint pid) {
@@ -287,5 +309,27 @@ namespace cyh::os {
 		}
 #endif
 		return false;
+	}
+	std::vector<ProcessGroup> ProcessMonitor::GetProcessGroups() {
+		std::vector<ProcessGroup> result;
+		auto procs = GetAllProcessInfo(true);
+		std::map<std::string, std::vector<ProcessInformation>> procInfoDict;
+		for (auto& proc : procs) {
+			procInfoDict[proc.name].push_back(proc);
+		}
+		result.reserve(procInfoDict.size());
+
+		for (auto& pair : procInfoDict) {
+			ProcessGroup group{};
+			group.name = pair.first;
+			group.sub_procs = std::move(pair.second);
+			for (auto& sub_proc : group.sub_procs) {
+				group.cpu_time_percentage += sub_proc.cpu_time_percentage;
+				group.memory += sub_proc.memory;
+			}
+			result.push_back(std::move(group));
+		}
+
+		return result;
 	}
 };

@@ -21,7 +21,7 @@
     <ClInclude Include="cyh\os\os_.hpp">
       <Filter>標頭檔</Filter>
     </ClInclude>
-    <ClInclude Include="cyh\os\common_internal.hpp">
+    <ClInclude Include="cyh\os\os_internal.hpp">
       <Filter>標頭檔</Filter>
     </ClInclude>
     <ClInclude Include="cyh\os\proc_mon.hpp">
@@ -35,7 +35,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="cyh\os\common_internal.cpp">
+    <ClCompile Include="cyh\os\os_internal.cpp">
       <Filter>來源檔案</Filter>
     </ClCompile>
     <ClCompile Include="cyh\os\proc_mon.cpp">

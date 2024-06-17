@@ -1,5 +1,5 @@
 #include "shmem_mgr.hpp"
-#include "common_internal.hpp"
+#include "os_internal.hpp"
 #include "res_mon.hpp"
 
 namespace cyh::os {

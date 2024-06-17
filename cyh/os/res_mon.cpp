@@ -1,5 +1,5 @@
 #include "res_mon.hpp"
-#include "common_internal.hpp"
+#include "os_internal.hpp"
 #include <cstring>
 #include <string>
 #ifndef __WINDOWS_PLATFORM__
@@ -16,13 +16,14 @@ namespace cyh::os {
 		}
 		queryStr += ' ';
 		queryStr += disk_label;
-		queryStr += ':';
 		queryStr += ")\\% Idle Time";
 		return queryStr;
 	}
-#else
-
 #endif
+	static void get_logicDisk_usage_ref(const char* disk_label, uint physical_no, double* pUsage) {
+		if (!pUsage ||!disk_label) { return; }
+		*pUsage = ResourceMonitor::GetLogicDiskUsage(disk_label, physical_no);
+	}
 	double ResourceMonitor::GetCpuClock() {
 		static double result{};
 		if (result != 0.0) {
@@ -164,31 +165,39 @@ namespace cyh::os {
 #endif
 		return result;
 	}
-	std::vector<double> ResourceMonitor::GetAllLogicDiskUsage() {
-		std::vector<double> result{};
+	std::vector<LogicDiskInformation> ResourceMonitor::GetAllLogicDiskInfo() {
+		std::vector<LogicDiskInformation> result{};	
 #ifdef __WINDOWS_PLATFORM__
 		auto labels = GetLogicDiskNos();
-		result.resize(labels.size());
-		std::vector<std::future<double>> tasks{};
+		auto diskCount = labels.size();
+		std::vector<std::future<void>> tasks{};
+		result.resize(diskCount);
+		nuint currentIndex = 0;
 		for (auto& label : labels) {
-			std::cout << label << std::endl;
-			tasks.push_back(std::async(std::launch::async, GetLogicDiskUsage, label.c_str(), ~uint()));
+			auto& currentInfo = result[currentIndex];
+			currentInfo.mount_or_label = label;
+			tasks.push_back(std::async(std::launch::async, get_logicDisk_usage_ref, label.c_str(), ~uint(), &currentInfo.io_time_percentage));
+			++currentIndex;
 		}
 		for (auto& task : tasks) {
-			result.push_back(task.get());
+			task.get();
 		}
 #else
-		auto infos0 = UnixInfoParser::read_disk_infos();
+		auto infos0 = UnixInfoParser::read_disks_info();
 		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-		auto infos1 = UnixInfoParser::read_disk_infos();
+		auto infos1 = UnixInfoParser::read_disks_info();
 		if (infos0.size() != infos1.size()) {
-			return std::vector<double>{};
+			return result;
 		}
-		result.reserve(infos0.size());
+		result.resize(infos0.size());
 		auto pInfos0 = infos0.data();
 		auto pInfos1 = infos1.data();
+		nuint currentIndex = 0;
 		for (nuint i = 0; i < infos0.size(); ++i) {
-			result.push_back(UnixInfoParser::calculate_disk_usage(pInfos0 + i, pInfos1 + i));
+			auto& currentInfo = result[currentIndex];
+			currentInfo.mount_or_label = pInfos0[currentIndex].device;
+			currentInfo.io_time_percentage = UnixInfoParser::calculate_disk_usage(pInfos0 + i, pInfos1 + i);
+			++currentIndex;
 		}
 #endif
 		return result;

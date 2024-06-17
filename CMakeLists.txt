@@ -16,7 +16,7 @@ set(CMAKE_SHARED_LINKER_FLAGS
 
 # add cpp files
 list(APPEND CYHCORE_SRCS
-    "cyh/os/common_internal.cpp"
+    "cyh/os/os_internal.cpp"
     "cyh/os/proc_mon.cpp"
     "cyh/os/res_mon.cpp"
     "cyh/os/shmem_mgr.cpp"
