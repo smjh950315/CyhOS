@@ -21,70 +21,8 @@ namespace cyh::os {
 		return queryStr;
 	}
 #else
-	struct _unixDiskInfo {
-		long major;
-		long minor;
-		std::string device;
-		long reads;
-		long readMerges;
-		long readSectors;
-		long readTicks;
-		long writes;
-		long writeMerges;
-		long writeSectors;
-		long writeTicks;
-		long inFlight;
-		long ioTicks;
-		long timeInQueue;
-	};
-	struct _unixCpuInfo {
-		long user;
-		long nice;
-		long system;
-		long idle;
-		long iowait;
-		long irq;
-		long softirq;
-		long steal;
-	};
-	static void read_unix_disk_info(_unixDiskInfo* pInfo, const std::string& rawStr) {
-		if (!pInfo) { return; }
-		_unixDiskInfo& diskUsage = *pInfo;
-		std::istringstream ss(rawStr);
-		ss >> diskUsage.major >> diskUsage.minor >> diskUsage.device >> diskUsage.reads >> diskUsage.readMerges >> diskUsage.readSectors >> diskUsage.readTicks >> diskUsage.writes >> diskUsage.writeMerges >> diskUsage.writeSectors >> diskUsage.writeTicks >> diskUsage.inFlight >> diskUsage.ioTicks >> diskUsage.timeInQueue;
-	}
-	static void read_unix_cpu_info(_unixCpuInfo* pInfo, const std::string& rawStr) {
-		if (!pInfo) { return; }
-		_unixCpuInfo& cpuUsage = *pInfo;
-		std::istringstream ss(rawStr);
-		std::string _cpu;
-		ss >> _cpu >> cpuUsage.user >> cpuUsage.nice >> cpuUsage.system >> cpuUsage.idle >> cpuUsage.iowait >> cpuUsage.irq >> cpuUsage.softirq >> cpuUsage.steal;
-	}
-	static float read_disk_usage(const std::string& rawStr) {
-		_unixDiskInfo diskUsage1{};
-		_unixDiskInfo diskUsage2{};
-		static auto fn_get_percentage = [=] (_unixDiskInfo* pInfo1, _unixDiskInfo* pInfo2) {
-			long ticks1 = pInfo1->readTicks + pInfo1->writeTicks;
-			long ticks2 = pInfo2->readTicks + pInfo2->writeTicks;
-			long deltaTicks = ticks2 - ticks1;
-			long time = pInfo2->ioTicks - pInfo1->ioTicks;
-			return static_cast<float>(static_cast<float>(deltaTicks) * 100.f / static_cast<float>(time));
-		};
-		return fn_get_percentage(&diskUsage1, &diskUsage2);
-	}
-	static float read_cpu_usage(const std::string& rawStr) {
-		_unixCpuInfo cpuUsage{};
-		static auto fn_get_percentage = [=] (_unixCpuInfo* pInfo) {
-			long idle = pInfo->idle + pInfo->iowait;
-			long nonIdle = pInfo->user + pInfo->nice + pInfo->system + pInfo->irq + pInfo->softirq + pInfo->steal;
-			long total = idle + nonIdle;
-			return static_cast<float>(static_cast<float>(total - idle) * 100.f / static_cast<float>(total));
-		};
-		read_unix_cpu_info(&cpuUsage, rawStr);
-		return fn_get_percentage(&cpuUsage);
-	}
-#endif
 
+#endif
 	double ResourceMonitor::GetCpuClock() {
 		static double result{};
 		if (result != 0.0) {
@@ -98,7 +36,7 @@ namespace cyh::os {
 			result = -1;
 		}
 #else
-		result = static_cast<double>(sysconf(_SC_CLK_TCK));
+		result = static_cast<double>(sysconf(_SC_CLK_TCK)) / 100000.0;
 #endif
 		return result;
 	}
@@ -147,30 +85,10 @@ namespace cyh::os {
 		WinPerfmonQuery::QueryForDoubleResult(cmd, &res, 1000u);
 		return res;
 #else
-		std::ifstream file("/proc/stat");
-		std::string line;
-
-		if (file.is_open()) {
-			std::string key = "cpu";
-			key += std::to_string(cpu_no);
-			float usage = 0.0f;
-			while (getline(file, line)) {
-				auto begin_index = line.find("cpu");
-				// break if line is not start with cpu
-				if (begin_index == std::string::npos) {
-					break;
-				}
-
-				if (line.find(key) == 0) {
-					usage = read_cpu_usage(line);
-					break;
-				}
-			}
-			file.close();
-			return usage;
-		} else {
-			return 0.0f;
-		}
+		auto info0 = UnixInfoParser::read_cpu_info(cpu_no);
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+		auto info1 = UnixInfoParser::read_cpu_info(cpu_no);
+		return UnixInfoParser::calculate_cpu_usage(&info0, &info1);
 #endif
 	}
 	double ResourceMonitor::GetLogicDiskUsage(const char* disk_label, uint physical_no) {
@@ -180,49 +98,13 @@ namespace cyh::os {
 		WinPerfmonQuery::QueryForDoubleResult(queryStr, &result, 1000u);
 		result = 100.0 - result;
 #else
-		_unixDiskInfo diskUsage1{};
-		_unixDiskInfo diskUsage2{};
-		static auto fn_get_percentage = [=] (_unixDiskInfo* pInfo1, _unixDiskInfo* pInfo2) {
-			long ticks1 = pInfo1->readTicks + pInfo1->writeTicks;
-			long ticks2 = pInfo2->readTicks + pInfo2->writeTicks;
-			long deltaTicks = ticks2 - ticks1;
-			long time = pInfo2->ioTicks - pInfo1->ioTicks;
-			return static_cast<float>(static_cast<float>(deltaTicks) * 100.f / static_cast<float>(time));
-		};
-		std::ifstream diskstats1("/proc/diskstats");
-		std::string line;
-		bool found = false;
-		while (std::getline(diskstats1, line)) {
-			if (line.find(disk_label) != std::string::npos) {
-				read_unix_disk_info(&diskUsage1, line);
-				found = true;
-				break;
-			}
-		}
-		diskstats1.close();
-		sleep(1);
-		if (!found) { return 0.0; }
-		std::ifstream diskstats2("/proc/diskstats");
-		while (std::getline(diskstats1, line)) {
-			if (line.find(disk_label) != std::string::npos) {
-				read_unix_disk_info(&diskUsage1, line);
-				found = true;
-				break;
-			}
-		}
-		diskstats2.close();
+		_unixDiskInfo diskUsage1 = UnixInfoParser::read_disk_info(disk_label);
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+		_unixDiskInfo diskUsage2 = UnixInfoParser::read_disk_info(disk_label);
+		result = UnixInfoParser::calculate_disk_usage(&diskUsage1, &diskUsage2);
 #endif
 		return result;
 	}
-	//	std::vector<DiskAbstract> ResourceMonitor::GetDiskInfoAbs() {
-	//		std::vector<DiskAbstract> result{};
-	// #ifdef __WINDOWS_PLATFORM__
-	//		auto drives = GetLogicalDrives();
-	// #else
-	//
-	// #endif
-	//		return result;
-	//	}
 	std::vector<std::string> ResourceMonitor::GetLogicDiskNos() {
 		std::vector<std::string> result;
 #ifdef __WINDOWS_PLATFORM__
@@ -245,7 +127,7 @@ namespace cyh::os {
 		std::string line;
 		_unixDiskInfo diskUsage{};
 		while (std::getline(diskstats, line)) {
-			read_unix_disk_info(&diskUsage, line);
+			UnixInfoParser::read_unix_disk_info(&diskUsage, line);
 			result.push_back(diskUsage.device);
 		}
 #endif
@@ -268,32 +150,24 @@ namespace cyh::os {
 			result.push_back(task.get());
 		}
 #else
-		std::ifstream file("/proc/stat");
-		std::string line;
-		if (file.is_open()) {
-			while (getline(file, line)) {
-				auto begin_index = line.find("cpu");
-				// break if line is not start with cpu
-				if (begin_index == std::string::npos) {
-					break;
-				}
-				// pass the total usage
-				if (line.find("cpu ") == 0) {
-					continue;
-				}
-				result.push_back(read_cpu_usage(line));
-			}
-			file.close();
+		auto infos0 = UnixInfoParser::read_cpus_info();
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+		auto infos1 = UnixInfoParser::read_cpus_info();
+		if (infos0.size() != infos1.size()) {
 			return result;
-		} else {
-			return {};
+		}
+		auto pInfos0 = infos0.data();
+		auto pInfos1 = infos1.data();
+		for (nuint i = 0; i < infos0.size(); ++i) {
+			result.push_back(UnixInfoParser::calculate_cpu_usage(pInfos0 + i, pInfos1 + i));
 		}
 #endif
 		return result;
 	}
 	std::vector<double> ResourceMonitor::GetAllLogicDiskUsage() {
-		auto labels = GetLogicDiskNos();
 		std::vector<double> result{};
+#ifdef __WINDOWS_PLATFORM__
+		auto labels = GetLogicDiskNos();
 		result.resize(labels.size());
 		std::vector<std::future<double>> tasks{};
 		for (auto& label : labels) {
@@ -303,6 +177,20 @@ namespace cyh::os {
 		for (auto& task : tasks) {
 			result.push_back(task.get());
 		}
+#else
+		auto infos0 = UnixInfoParser::read_disk_infos();
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+		auto infos1 = UnixInfoParser::read_disk_infos();
+		if (infos0.size() != infos1.size()) {
+			return std::vector<double>{};
+		}
+		result.reserve(infos0.size());
+		auto pInfos0 = infos0.data();
+		auto pInfos1 = infos1.data();
+		for (nuint i = 0; i < infos0.size(); ++i) {
+			result.push_back(UnixInfoParser::calculate_disk_usage(pInfos0 + i, pInfos1 + i));
+		}
+#endif
 		return result;
 	}
 	MemoryStatus ResourceMonitor::GetMemoryStatus() {

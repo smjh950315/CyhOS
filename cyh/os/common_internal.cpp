@@ -170,6 +170,120 @@ namespace cyh::os {
 	}
 };
 #else
+#include "res_mon.hpp"
+namespace cyh::os {
+	void UnixInfoParser::read_unix_disk_info(_unixDiskInfo* pInfo, const std::string& rawStr) {
+		if (!pInfo) { return; }
+		_unixDiskInfo& diskUsage = *pInfo;
+		std::istringstream ss(rawStr);
+		ss >> diskUsage.major >> diskUsage.minor >> diskUsage.device >> diskUsage.reads >> diskUsage.readMerges >> diskUsage.readSectors >> diskUsage.readTicks >> diskUsage.writes >> diskUsage.writeMerges >> diskUsage.writeSectors >> diskUsage.writeTicks >> diskUsage.inFlight >> diskUsage.ioTicks >> diskUsage.timeInQueue;
+	}
+	void UnixInfoParser::read_unix_cpu_info(_unixCpuInfo* pInfo, const std::string& rawStr) {
+		if (!pInfo) { return; }
+		_unixCpuInfo& cpuUsage = *pInfo;
+		std::istringstream ss(rawStr);
+		std::string _cpu;
+		ss >> _cpu >> cpuUsage.user >> cpuUsage.nice >> cpuUsage.system >> cpuUsage.idle >> cpuUsage.iowait >> cpuUsage.irq >> cpuUsage.softirq >> cpuUsage.steal;
+	}
+
+	_unixDiskInfo UnixInfoParser::read_disk_info(const std::string& disk_label) {
+		_unixDiskInfo result{};
+		std::ifstream diskstats("/proc/diskstats");
+		std::string line;
+		if (diskstats.is_open()) {
+			while (std::getline(diskstats, line)) {
+				if (line.find(disk_label) != std::string::npos) {
+					read_unix_disk_info(&result, line);
+					break;
+				}
+			}
+			diskstats.close();
+		}
+		return result;
+	}
+	std::vector<_unixDiskInfo> UnixInfoParser::read_disk_infos() {
+		std::vector<_unixDiskInfo> result{};
+
+		std::ifstream diskstats("/proc/diskstats");
+		std::string line;
+		if (diskstats.is_open()) {
+			while (std::getline(diskstats, line)) {
+				_unixDiskInfo diskUsage{};
+				read_unix_disk_info(&diskUsage, line);
+				result.push_back(diskUsage);
+			}
+		}
+
+		return result;
+	}
+	double UnixInfoParser::calculate_disk_usage(_unixDiskInfo* pInfo1, _unixDiskInfo* pInfo2) {
+		long delta_total_time = pInfo1->total_time() - pInfo2->total_time();
+		long delta_idle_time = pInfo1->idle_time() - pInfo2->idle_time();
+		return static_cast<double>(delta_total_time - delta_idle_time) / static_cast<double>(delta_total_time) * 100.0;
+	}
+
+	_unixCpuInfo UnixInfoParser::read_cpu_info(uint cpu_no) {
+		auto cpu_count = ResourceMonitor::GetProcessorCount();
+
+		_unixCpuInfo result{};
+		std::ifstream file("/proc/stat");
+		std::string line;
+
+		if (file.is_open()) {
+			std::string key = "cpu";
+			key += std::to_string(cpu_no);
+			while (getline(file, line)) {
+				auto begin_index = line.find("cpu");
+				// break if line is not start with cpu
+				if (begin_index == std::string::npos) {
+					break;
+				}
+				// read info of specific cpu_no only
+				if (line.find(key) == 0) {
+					_unixCpuInfo cpuUsage{};
+					read_unix_cpu_info(&cpuUsage, line);
+					break;
+				}
+			}
+			file.close();
+		}
+		return result;
+	}
+	std::vector<_unixCpuInfo> UnixInfoParser::read_cpus_info() {
+		auto cpu_count = ResourceMonitor::GetProcessorCount();
+
+		std::vector<_unixCpuInfo> result{};
+		std::ifstream file("/proc/stat");
+		std::string line;
+		uint cpu_no = 0;
+
+		if (file.is_open()) {
+			std::string key = "cpu";
+			key += std::to_string(cpu_no);
+			while (getline(file, line)) {
+				auto begin_index = line.find("cpu");
+				// break if line is not start with cpu
+				if (begin_index == std::string::npos) {
+					break;
+				}
+				// read info of specific cpu_no only
+				if (line.find(key) == 0) {
+					_unixCpuInfo cpuUsage{};
+					read_unix_cpu_info(&cpuUsage, line);
+					result.push_back(cpuUsage);
+					++cpu_no;
+				}
+			}
+			file.close();
+		}
+		return result;
+	}
+	double UnixInfoParser::calculate_cpu_usage(_unixCpuInfo* pInfo1, _unixCpuInfo* pInfo2) {
+		long delta_total_time = pInfo2->total_time() - pInfo1->total_time();
+		long delta_idle_time = pInfo2->idle_time() - pInfo1->idle_time();
+		return static_cast<double>(delta_total_time - delta_idle_time) / static_cast<double>(delta_total_time) * 100.0;
+	}
+};
 #endif
 namespace cyh::os {
 	double UnitConvert::GetRatioToByte(const std::string unit) {

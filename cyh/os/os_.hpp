@@ -20,6 +20,15 @@ namespace cyh::os {
 			double avail{};
 		} Physical, Pagefile;
 	};
+	struct ProcessInformation {
+		uint pid{};
+		std::string name;
+		std::string path;
+		nuint memory{};
+		nuint kernal_time{};
+		nuint user_time{};
+		double cpu_time_percentage{};
+	};
 	struct ProcessDetails {
 		uint pid{};
 		std::string name;
