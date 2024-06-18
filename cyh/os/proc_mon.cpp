@@ -162,7 +162,7 @@ namespace cyh::os {
 		*pCpuTime = static_cast<double>(info0.total_cpu_time() - info1.total_cpu_time());
 #endif
 	}
-	static void measure_process_cpuTime_batch(uint* ppid, double* pCpuTimes, nuint count) {
+	static void measure_process_cpuTimePercentage_batch(uint* ppid, double* pCpuTimes, nuint count) {
 
 		std::vector<std::future<void>> tasks;
 		tasks.reserve(count);
@@ -185,6 +185,7 @@ namespace cyh::os {
 		} else {
 			for (nuint i = 0; i < count; ++i) {
 				pCpuTimes[i] /= cpuDeltaTime;
+				pCpuTimes[i] *= 100.0;
 			}
 		}
 #endif
@@ -259,7 +260,7 @@ namespace cyh::os {
 		cpuTimes.resize(count);
 		uint* ppids = pids.data();
 		double* pTimes = cpuTimes.data();
-		std::future<void> taskGetCpuTimes = std::async(std::launch::async, measure_process_cpuTime_batch, ppids, pTimes, count);
+		std::future<void> taskGetCpuTimes = std::async(std::launch::async, measure_process_cpuTimePercentage_batch, ppids, pTimes, count);
 		for (auto& pid : pids) {
 			result.push_back(GetProcessInfo(pid, with_details));
 		}
@@ -285,6 +286,7 @@ namespace cyh::os {
 			result = 0;
 		} else {
 			result /= deltaCpu;
+			result *= 100.0;
 		}
 #endif
 		return result;
