@@ -15,14 +15,14 @@ set(CMAKE_SHARED_LINKER_FLAGS
 )
 
 # add cpp files
-list(APPEND CYHCORE_SRCS
+list(APPEND CYHOS_SRCS
     "cyh/os/os_internal.cpp"
     "cyh/os/proc_mon.cpp"
     "cyh/os/res_mon.cpp"
     "cyh/os/shmem_mgr.cpp"
 )
 
-add_library(cyhos SHARED ${CYHCORE_SRCS})
+add_library(cyhos SHARED ${CYHOS_SRCS})
 set_target_properties(cyhos PROPERTIES OUTPUT_NAME cyhos)
 target_compile_features(
     cyhos
